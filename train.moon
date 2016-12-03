@@ -196,3 +196,181 @@ export prepro = (x, y) ->
       y = y\cl!
 
   x, y
+
+export eval_split = (split_index, max_batches) ->
+  print "evaluating loss over split index #{split_index}"
+
+  n = loader.split_sizes[split_index]
+  n = math.min max_batches, n if max_batches ~= nil
+
+  loader\reset_batch_pointer split_index
+
+  loss = 0
+  rnn_state = {
+    [0]: init_state
+  }
+
+  for i = 1, n
+    x, y = loader\next_batch split_index
+    x, y = prepro x, y
+
+    for t = 1, opt.seq_length
+      clones.rnn[t]\evaluate!
+
+      lst = clones.rnn[t]\forward {
+        x[t]
+        unpack rnn_state[t - 1]
+      }
+
+      rnn_state[t] = {}
+
+      for i = 1, #init_state
+        table.insert rnn_state[t], lst[i]
+
+      prediction = lst[#lst]
+      loss      += clones.criterion[t]\forward prediction, y[t]
+
+    loss /= opt.seq_length / n
+    print "#{i} / #{n} ..."
+
+    loss
+
+init_state_global = clone_list init_state
+export feval = (x) ->
+  if x ~= params
+    params\copy x
+
+  grad_params\zero!
+
+  ----------------------------------
+  -- get minibatch
+  ----------------------------------
+  x, y = loader\next_batch 1
+  x, y = prepro x, y
+  ----------------------------------
+  -- forward pass
+  ----------------------------------
+  loss       = 0
+  predictions = {}
+  rnn_state  = {
+    [0]: init_state_global
+  }
+
+  for t = 1, opt.seq_length
+    clones.rnn[t]\training!
+
+    lst = clones.rnn[t]\forward {
+      x[t]
+      unpack rnn_state[t - 1]
+    }
+
+    rnn_state[t] = {}
+
+    for i = 1, #init_state
+      table.insert rnn_state[t], lst[i]
+
+    predictions[t] = lst[#lst]
+
+    loss += clones.criterion[t]\forward predictions[t], y[t]
+
+  loss /= opt.seq_length
+  ----------------------------------
+  -- backward pass
+  ----------------------------------
+  drnn_state = {
+    [opt.seq_length]: clone_list init_state, true
+  }
+  for t = opt.seq_length, 1, -1
+    doutput_t = clones.criterion[t]\backward predictions[t], y[t]
+
+    table.insert drnn_state[t], doutput_t
+
+    dlst = clones.rnn[t]\backward {
+      x[t]
+      unpack rnn_state[t - 1]
+      drnn_state[t]
+    }
+
+    drnn_state[t - 1] = {}
+
+    for k, v in pairs dlst
+      if k > 1
+        drnn_state[t - 1][k - 1] = v
+
+  ----------------------------------
+  -- misc
+  ----------------------------------
+  init_state_global = rnn_state[#rnn_state]
+  grad_params\clamp -opt.grad_clip, opt.grad_clip
+
+  loss, grad_params
+
+----------------------------------
+-- optimization stuff
+----------------------------------
+train_losses = {}
+val_losses   = {}
+
+optim_state  = {
+  learningRate: opt.learning_rate
+  alpha: opt.decay_rate
+}
+
+iterations       = opt.max_epochs * loader.ntrain
+iterations_epoch = loader.ntrain
+
+loss0
+
+for i = 1, iterations
+  epoch = i / loader.ntrain
+
+  timer   = torch.Timer!
+  _, loss = optim.rmsprop feval, params, optim_state
+
+  if opt.accurate_gpu_timing == 1 and opt.gpuid >= 0
+    cutorch.synchronize!
+
+  train_losses = loss[1]
+
+  if i % loader.ntrain == 0 and opt.learning_rate_decay < 1
+    if epoch >= opt.learning_rate_decay_after
+      optim_state.learningRate *= opt.learning_rate_decay
+
+      print "decayed learning rate by coefficient #{opt.learning_rate_decay} to #{optim_state.learningRate}"
+
+  if i % opt.eval_val_every == 0 or i == iterations
+    val_loss   = eval_split 2
+    val_losses = val_loss
+
+    savefile = string.format "%s/lm_%s_epoch%.2f_%.4f.t7", opt.checkpoint_dir, opt.savefile, epoch, val_loss
+
+    print "saving to checkpoint to #{savefile}"
+
+    checkpoint = {
+      :protos
+      :opt
+      :train_losses
+      :val_loss
+      :val_losses
+      :i
+      :epoch
+      vocab: loader.vocab_mapping
+    }
+
+    torch.save savefile, checkpoint
+
+  if i % opt.print_every == 0
+    print string.format "%d/%d (epoch %.3f), train_loss = %6.8f, grad/param norm = %6.4e, time/batch = %.4fs", i, iterations, epoch, train_loss, grad_params\norm! / params\norm!, time
+
+  if i % 10 == 0
+    collectgarbage!
+
+  if loss[1] != loss[1]
+    print "what the fuck? kill me please"
+
+  if loss0 == nil
+    loss0 = loss[1]
+
+  if loss[1] > loss0 * 3
+    print "loss is exploding, kill me please"
+    break -- $ fucking halt
