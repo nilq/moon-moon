@@ -23,9 +23,9 @@ gru = (input_size, rnn_size, n, dropout=0) ->
     else
       x = outputs[L - 1]
 
-      if dropout > 0
-        x = (nn.Dropout dropout) x
-        input_size_L = rnn_size
+      x = (nn.Dropout dropout) x if dropout > 0
+
+      input_size_L = rnn_size
 
     ----------------------------------
     -- forward update and reset gates
