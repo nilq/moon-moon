@@ -47,3 +47,7 @@ Options
   -opencl                    use OpenCL rather than CUDA [0]
 
 ```
+
+---
+
+Thanks to Karpathy
