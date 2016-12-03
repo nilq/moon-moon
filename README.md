@@ -50,4 +50,4 @@ Options
 
 ---
 
-Thanks to Karpathy
+"Skud ud til Karpathy"
