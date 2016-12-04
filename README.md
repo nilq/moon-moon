@@ -4,6 +4,10 @@ Character level model generation and sampling with LSTM, RNN, GRU etc. neural ne
 ---
 
 ```
+$ make train
+```
+
+```
 $ moonc .
 $ th train.lua -h
 Built ./train.moon
