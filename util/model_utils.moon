@@ -5,7 +5,7 @@ combine_all_parameters = (...) ->
   params   = {}
   grads    = {}
 
-  for i = 1, #network
+  for i = 1, #networks
     net_params, net_grads = networks[1]\parameters!
 
     if net_params
@@ -34,7 +34,7 @@ combine_all_parameters = (...) ->
       storage = params[k]\storage!
 
       unless storage_in_set storages, storage
-        storages[torch.points storage] = {
+        storages[torch.pointer storage] = {
           storage
           n_params
         }
@@ -47,7 +47,8 @@ combine_all_parameters = (...) ->
     for k = 1, #params
       storage_offset = storage_in_set storages, params[k]\storage!
 
-      params[k]\set storage_offset + params[k]\storageOffset!,
+      params[k]\set flat_storage,
+        storage_offset + params[k]\storageOffset!,
         params[k]\size!,
         params[k]\stride!
 
@@ -63,7 +64,8 @@ combine_all_parameters = (...) ->
     for k = 1, #params
       offset = cum_sum_holes[params[k]\storageOffset!]
 
-      params[k]\set params[k]\storageOffset! - offset,
+      params[k]\set flat_storage,
+        params[k]\storageOffset! - offset,
         params[k]\size!,
         params[k]\stride!
 
@@ -82,6 +84,11 @@ combine_all_parameters = (...) ->
       assert counter == n_used_params
 
     flat_used_params
+
+  flat_params = flatten params
+  flat_grads  = flatten grads
+
+  flat_params, flat_grads
 
 clone_many_times = (net, T) ->
   clones = {}

@@ -6,7 +6,7 @@ lstm = (input_size, rnn_size, n, dropout=0) ->
     table.insert inputs, nn.Identity!!
     table.insert inputs, nn.Identity!!
 
-  x, input_size_L
+  local x, input_size_L
   outputs = {}
 
   for L = 1, n
@@ -15,7 +15,7 @@ lstm = (input_size, rnn_size, n, dropout=0) ->
 
     if L == 1
       x = (OneHot input_size) inputs[1]
-      input_size_L = inputs
+      input_size_L = input_size
     else
       x = outputs[(L - 1) * 2]
       x = (nn.Dropout dropout) x if dropout > 0
@@ -25,7 +25,7 @@ lstm = (input_size, rnn_size, n, dropout=0) ->
     i2h = ((nn.Linear input_size_L, 4 * rnn_size) x)\annotate {name: "i2h_#{L}"}
     h2h = ((nn.Linear rnn_size, 4 * rnn_size) prev_h)\annotate {name: "h2h_#{L}"}
 
-    all_input_sums = nn.CAddtable! {i2h, h2h}
+    all_input_sums = nn.CAddTable! {i2h, h2h}
 
     reshaped = (nn.Reshape 4, rnn_size) all_input_sums
     n1, n2, n3, n4 = ((nn.SplitTable 2) reshaped)\split 4

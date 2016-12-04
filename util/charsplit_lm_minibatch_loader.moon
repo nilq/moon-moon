@@ -4,6 +4,8 @@ class
     vocab_file  = path.join data_dir, "vocab.t7"
     tensor_file = path.join data_dir, "data.t7"
 
+    print "[file] tensor: #{tensor_file}"
+
     run_prepro = false
 
     unless (path.exists vocab_file) or path.exists tensor_file

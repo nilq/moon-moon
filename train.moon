@@ -4,8 +4,16 @@ require "nngraph"
 require "optim"
 require "lfs"
 
-import CharSplitLMMinibatchLoader, model_utils from require "utils"
-import LSTM, GRU, RNN                          from require "model"
+require "util/onehot"
+
+CharSplitLMMinibatchLoader = require "util/charsplit_lm_minibatch_loader"
+model_utils                = require "util/model_utils"
+
+LSTM = require "model/lstm"
+GRU  = require "model/gru"
+RNN  = require "model/rnn"
+
+require "util/util"
 
 cmd = torch.CmdLine!
 cmd\text!
@@ -15,7 +23,7 @@ cmd\text "Options"
 ----------------------------------
 -- data stuff
 ----------------------------------
-cmd\option "-data_dir", "data/rrmartin", "data directory should contain the file 'input.txt' with input data"
+cmd\option "-data_dir", "data/rrmartin/", "data directory should contain the file 'input.txt' with input data"
 ----------------------------------
 -- model stuff
 ----------------------------------
@@ -59,10 +67,11 @@ export opt = cmd\parse arg
 torch.manualSeed opt.seed
 
 test_frac   = math.max 0, 1 - (opt.train_frac + opt.val_frac)
+
 split_sizes = {
   opt.train_frac
   opt.val_frac
-  opt.test_frac
+  test_frac
 }
 
 if opt.gpuid >= 0 and opt.opencl == 0
@@ -140,7 +149,7 @@ if 0 < string.len opt.init_from
 
 else
   print "creating an #{opt.model} with #{opt.num_layers} layers ..."
-  protos = {}
+  export protos = {}
 
   switch opt.model
     when "lstm"
@@ -173,7 +182,7 @@ if opt.gpuid >= 0
     for k, v in pairs protos
       v\cl!
 
-params, grad_params = model_utils\combine_all_parameters protos.rnn
+params, grad_params = model_utils.combine_all_parameters protos.rnn
 params\uniform -0.08, 0.08 if do_random_init
 
 print "number of parameters in the model: #{params\nElement!}"
@@ -230,10 +239,11 @@ export eval_split = (split_index, max_batches) ->
       prediction = lst[#lst]
       loss      += clones.criterion[t]\forward prediction, y[t]
 
-    loss /= opt.seq_length / n
+    rnn_state[0] = rnn_state[#rnn_state]
     print "#{i} / #{n} ..."
 
-    loss
+  loss /= opt.seq_length / n
+  loss
 
 init_state_global = clone_list init_state
 export feval = (x) ->
@@ -285,11 +295,8 @@ export feval = (x) ->
 
     table.insert drnn_state[t], doutput_t
 
-    dlst = clones.rnn[t]\backward {
-      x[t]
-      unpack rnn_state[t - 1]
+    dlst = clones.rnn[t]\backward {x[t], unpack rnn_state[t - 1]},
       drnn_state[t]
-    }
 
     drnn_state[t - 1] = {}
 
@@ -316,13 +323,13 @@ optim_state  = {
   alpha: opt.decay_rate
 }
 
-iterations       = opt.max_epochs * loader.ntrain
-iterations_epoch = loader.ntrain
+iterations       = opt.max_epochs * loader.n_train
+iterations_epoch = loader.n_train
 
-loss0
+local loss0
 
 for i = 1, iterations
-  epoch = i / loader.ntrain
+  epoch = i / loader.n_train
 
   timer   = torch.Timer!
   _, loss = optim.rmsprop feval, params, optim_state
@@ -330,9 +337,10 @@ for i = 1, iterations
   if opt.accurate_gpu_timing == 1 and opt.gpuid >= 0
     cutorch.synchronize!
 
+  time = timer\time!.real
   train_losses = loss[1]
 
-  if i % loader.ntrain == 0 and opt.learning_rate_decay < 1
+  if i % loader.n_train == 0 and opt.learning_rate_decay < 1
     if epoch >= opt.learning_rate_decay_after
       optim_state.learningRate *= opt.learning_rate_decay
 
@@ -360,7 +368,7 @@ for i = 1, iterations
     torch.save savefile, checkpoint
 
   if i % opt.print_every == 0
-    print string.format "%d/%d (epoch %.3f), train_loss = %6.8f, grad/param norm = %6.4e, time/batch = %.4fs", i, iterations, epoch, train_loss, grad_params\norm! / params\norm!, time
+    print string.format "%d/%d (epoch %.3f), train_loss = %6.8f, grad/param norm = %6.4e, time/batch = %.4fs", i, iterations, epoch, loss[1], grad_params\norm! / params\norm!, time
 
   if i % 10 == 0
     collectgarbage!
