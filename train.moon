@@ -19,6 +19,8 @@ cmd = torch.CmdLine!
 cmd\text!
 cmd\text "'Moon Moon' by Nilq"
 cmd\text!
+cmd\text "Train all the things!"
+cmd\text!
 cmd\text "Options"
 ----------------------------------
 -- data stuff
@@ -74,39 +76,39 @@ split_sizes = {
   test_frac
 }
 
-if opt.gpuid >= 0 and opt.opencl == 0
-  ok, cunn     = pcall require, "cunn"
-  ok2, cutorch = pcall require, "cutorch"
+if opt.gpuid >= 0
+  if opt.opencl == 0
+    ok, cunn     = pcall require, "cunn"
+    ok2, cutorch = pcall require, "cutorch"
 
-  print "package CUNN not found!"    unless ok
-  print "package CUTorch not found!" unless ok2
+    print "package CUNN not found!"    unless ok
+    print "package CUTorch not found!" unless ok2
 
-  if ok and ok2
-    print "using CUDA on GPU #{opt.gpuid} ..."
+    if ok and ok2
+      print "using CUDA on GPU #{opt.gpuid} ..."
 
-    cutorch.setDevice  opt.gpuid + 1
-    cutorch.manualSeed opt.seed
-  else
-    print "Fucked up some CUDA things ..."
-    print "Falling back to CPU mode ..."
-    opt.gpuid = -1
+      cutorch.setDevice  opt.gpuid + 1
+      cutorch.manualSeed opt.seed
+    else
+      print "Fucked up some CUDA things ..."
+      print "Falling back to CPU mode ..."
+      opt.gpuid = -1
+  else if opt.opencl == 1
+    ok, clnn     = pcall require, "clnn"
+    ok2, cltorch = pcall require, "cltorch"
 
-if opt.gpuid >= 0 and opt.opencl == 1
-  ok, clnn     = pcall require, "clnn"
-  ok2, cltorch = pcall require, "cltorch"
+    print "package CLNN not found!"    unless ok
+    print "package CLTorch not found!" unless ok2
 
-  print "package CLNN not found!"    unless ok
-  print "package CLTorch not found!" unless ok2
+    if ok and ok2
+      print "using OpenCL on GPU #{opt.gpuid} ..."
 
-  if ok and ok2
-    print "using OpenCL on GPU #{opt.gpuid} ..."
-
-    cltorch.setDevice opt.gpuid + 1
-    torch.manualSeed  opt.seed
-  else
-    print "Fucked up some CL things ..."
-    print "Falling back to CPU mode ..."
-    opt.gpuid = -1
+      cltorch.setDevice opt.gpuid + 1
+      torch.manualSeed  opt.seed
+    else
+      print "Fucked up some CL things ..."
+      print "Falling back to CPU mode ..."
+      opt.gpuid = -1
 
 loader     = CharSplitLMMinibatchLoader opt.data_dir, opt.batch_size, opt.seq_length, split_sizes
 vocab_size = loader.vocab_size
