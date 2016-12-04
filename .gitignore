@@ -1,1 +1,3 @@
 *.lua
+!onehot.lua
+*.t7
